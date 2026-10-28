@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #0b0d11;
+    --bg-secondary: #12151b;
+    --bg-tertiary: #191e26;
+    --border-subtle: #1f242d;
+    --border-strong: #2d3545;
+    --text-primary: #f0f3f6;
+    --text-secondary: #8c94a0;
+    --text-muted: #647082;
+    --accent: #b0ff38;
+    --accent-hover: #9ee628;
+  }
+
+  html.light {
+    --bg-primary: #f7f9fb;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #edf1f7;
+    --border-subtle: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --accent: #15803d;
+    --accent-hover: #166534;
+  }
+
+  html.light body {
+    background-color: #f7f9fb;
+    color: #0f172a;
+  }
+
+  html.light .bg-\[\#0b0d11\] {
+    background-color: #f7f9fb !important;
+  }
+  html.light .bg-\[\#0b0d11\]\/90 {
+    background-color: rgba(247, 249, 251, 0.9) !important;
+  }
+  html.light .bg-\[\#0b0d11\]\/95 {
+    background-color: rgba(247, 249, 251, 0.95) !important;
+  }
+  html.light .bg-\[\#0c0f14\] {
+    background-color: #ffffff !important;
+  }
+  html.light .bg-\[\#0d1015\] {
+    background-color: #f1f4f9 !important;
+  }
+  html.light .bg-\[\#0e1116\] {
+    background-color: #f1f5f9 !important;
+  }
+  html.light .bg-\[\#12151b\] {
+    background-color: #ffffff !important;
+  }
+  html.light .bg-\[\#13161c\] {
+    background-color: #f8fafc !important;
+  }
+  html.light .bg-\[\#13171e\] {
+    background-color: #f1f5f9 !important;
+  }
+  html.light .bg-\[\#161a22\] {
+    background-color: #f8fafc !important;
+  }
+  html.light .bg-\[\#191e26\] {
+    background-color: #f1f5f9 !important;
+  }
+  html.light .bg-\[\#191e26\]\/50 {
+    background-color: rgba(241, 245, 249, 0.5) !important;
+  }
+  html.light .bg-\[\#0f1217\] {
+    background-color: #f8fafc !important;
+  }
+
+  html.light .border-\[\#1f242d\] {
+    border-color: #e2e8f0 !important;
+  }
+  html.light .border-\[\#2d3545\] {
+    border-color: #cbd5e1 !important;
+  }
+  html.light .border-\[\#1a1f29\] {
+    border-color: #e2e8f0 !important;
+  }
+
+  html.light .text-\[\#f0f3f6\] {
+    color: #0f172a !important;
+  }
+  html.light .text-\[\#e2e8f0\] {
+    color: #0f172a !important;
+  }
+  html.light .text-\[\#8c94a0\] {
+    color: #475569 !important;
+  }
+  html.light .text-\[\#647082\] {
+    color: #64748b !important;
+  }
+  html.light .text-\[\#454e5d\] {
+    color: #94a3b8 !important;
+  }
+
+  html.light .text-\[\#b0ff38\] {
+    color: #15803d !important;
+  }
+  html.light .bg-\[\#b0ff38\] {
+    background-color: #15803d !important;
+    color: #ffffff !important;
+  }
+  html.light .bg-\[\#b0ff38\]\/10 {
+    background-color: rgba(21, 128, 61, 0.1) !important;
+  }
+  html.light .bg-\[\#b0ff38\]\/15 {
+    background-color: rgba(21, 128, 61, 0.15) !important;
+  }
+  html.light .border-\[\#b0ff38\]\/20 {
+    border-color: rgba(21, 128, 61, 0.25) !important;
+  }
+  html.light .border-\[\#b0ff38\]\/30 {
+    border-color: rgba(21, 128, 61, 0.3) !important;
+  }
+  html.light .border-\[\#b0ff38\]\/40 {
+    border-color: rgba(21, 128, 61, 0.4) !important;
+  }
+  html.light .border-\[\#b0ff38\]\/50 {
+    border-color: rgba(21, 128, 61, 0.5) !important;
+  }
+}
+
+/* Custom Scrollbar for Code and Panes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232936;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #323b4d;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

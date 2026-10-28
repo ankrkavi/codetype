@@ -1,0 +1,8 @@
+{
+  "name": "CodeType — Premium Coding Typing Practice Platform",
+  "description": "Master coding syntax, brackets, pointers, templates, and algorithms with real code typing practice across C++ and Java.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
