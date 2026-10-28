@@ -13,7 +13,10 @@ import {
   Volume2,
   VolumeX,
   Keyboard,
-  Info
+  Info,
+  Smartphone,
+  CornerDownLeft,
+  Delete
 } from 'lucide-react';
 import { Difficulty, Language, PracticeMode, Snippet, TypingMode } from '../types';
 import { SNIPPETS, LANGUAGE_META } from '../data/snippets';
@@ -78,6 +81,7 @@ export const Arena: React.FC<ArenaProps> = ({
   const [correctKeystrokes, setCorrectKeystrokes] = useState<number>(0);
   const [errorKeystrokes, setErrorKeystrokes] = useState<number>(0);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [isInputFocused, setIsInputFocused] = useState<boolean>(false);
 
   // Time limit for timed modes
   const timeLimitSeconds =
@@ -90,6 +94,8 @@ export const Arena: React.FC<ArenaProps> = ({
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const pausedTimeRef = useRef<number>(0);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const isKeyDownHandledRef = useRef<boolean>(false);
 
   // Synchronize when initialSnippetId or filters change from parent
   useEffect(() => {
@@ -103,6 +109,18 @@ export const Arena: React.FC<ArenaProps> = ({
       }
     }
   }, [initialSnippetId]);
+
+  // Keep cursor position synced at end of typed text in textarea
+  useEffect(() => {
+    if (inputRef.current) {
+      const len = typedText.length;
+      try {
+        inputRef.current.setSelectionRange(len, len);
+      } catch {
+        // Ignored on unsupported environments
+      }
+    }
+  }, [typedText]);
 
   // Tokenize the snippet code
   const tokens: CodeCharToken[] = React.useMemo(() => {
@@ -283,7 +301,144 @@ export const Arena: React.FC<ArenaProps> = ({
     }
   }, [typedText, targetCode, isActive, isCompleted, typingMode, handleComplete]);
 
-  // Keyboard Event Handling
+  // Core character insertion routine (used by physical keydown, mobile onChange, and accessory buttons)
+  const insertChars = useCallback(
+    (chars: string) => {
+      if (isCompleted || isPaused) return;
+
+      if (!isActive) {
+        setIsActive(true);
+        startTimeRef.current = Date.now();
+      }
+
+      setTypedText((prevTyped) => {
+        let updated = prevTyped;
+        let localCorrect = 0;
+        let localError = 0;
+        let localTotal = 0;
+
+        for (let i = 0; i < chars.length; i++) {
+          const ch = chars[i];
+          const currentIndex = updated.length;
+          if (currentIndex >= targetCode.length) break;
+
+          const expectedChar = targetCode[currentIndex];
+          const isCorrect = ch === expectedChar;
+          localTotal++;
+
+          if (isCorrect) {
+            localCorrect++;
+            soundFx.playKeyClick();
+            updated += ch;
+
+            // Auto-indent helper when newline is typed: advance matching leading spaces
+            if (ch === '\n') {
+              const restTarget = targetCode.slice(updated.length);
+              const leadingSpacesMatch = restTarget.match(/^[ ]+/);
+              if (leadingSpacesMatch && leadingSpacesMatch[0]) {
+                updated += leadingSpacesMatch[0];
+                localCorrect += leadingSpacesMatch[0].length;
+              }
+            }
+          } else {
+            localError++;
+            soundFx.playError();
+            if (typingMode === 'strict') {
+              // In strict mode, do not advance past error
+              break;
+            } else {
+              // In free mode, record error and advance
+              updated += ch;
+            }
+          }
+        }
+
+        if (localTotal > 0) {
+          setTotalKeystrokes((k) => k + localTotal);
+          setCorrectKeystrokes((k) => k + localCorrect);
+          setErrorKeystrokes((k) => k + localError);
+        }
+
+        return updated;
+      });
+    },
+    [isCompleted, isPaused, isActive, targetCode, typingMode]
+  );
+
+  // Tab insertion handler
+  const handleTabInsert = useCallback(() => {
+    if (isCompleted || isPaused) return;
+    const currentIndex = typedText.length;
+    const restExpected = targetCode.slice(currentIndex);
+
+    let spacesToInsert = '  ';
+    if (restExpected.startsWith('    ')) {
+      spacesToInsert = '    ';
+    } else if (restExpected.startsWith('  ')) {
+      spacesToInsert = '  ';
+    } else if (targetCode[currentIndex] === '\t') {
+      spacesToInsert = '\t';
+    }
+
+    insertChars(spacesToInsert);
+  }, [isCompleted, isPaused, typedText.length, targetCode, insertChars]);
+
+  // Backspace handler
+  const handleBackspaceInsert = useCallback(() => {
+    if (isCompleted || isPaused) return;
+    if (typedText.length > 0) {
+      setTypedText((prev) => prev.slice(0, -1));
+      soundFx.playKeyClick();
+    }
+  }, [isCompleted, isPaused, typedText.length]);
+
+  // Mobile-compatible onChange handler:
+  // Virtual keyboards (Android Gboard, iOS keyboard, SwiftKey) deliver typed characters via the input/change event
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (isCompleted || isPaused) return;
+
+    // If this keystroke was already handled by desktop onKeyDown, skip duplicate processing
+    if (isKeyDownHandledRef.current) {
+      isKeyDownHandledRef.current = false;
+      return;
+    }
+
+    const newVal = e.target.value;
+    const oldVal = typedText;
+
+    if (newVal === oldVal) return;
+
+    // Start timer on first input
+    if (!isActive) {
+      setIsActive(true);
+      startTimeRef.current = Date.now();
+    }
+
+    // Case 1: Deletion / Backspace
+    if (newVal.length < oldVal.length) {
+      setTypedText(newVal);
+      soundFx.playKeyClick();
+      return;
+    }
+
+    // Case 2: Insertion (single character, autocomplete, or paste)
+    // Find common prefix to detect newly inserted characters
+    let commonPrefixLen = 0;
+    while (
+      commonPrefixLen < oldVal.length &&
+      commonPrefixLen < newVal.length &&
+      oldVal[commonPrefixLen] === newVal[commonPrefixLen]
+    ) {
+      commonPrefixLen++;
+    }
+
+    const insertedStr = newVal.slice(commonPrefixLen);
+    if (insertedStr.length > 0) {
+      insertChars(insertedStr);
+    }
+  };
+
+  // Keyboard Event Handling (Desktop physical keys + special mobile keys)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Global restart shortcuts
     if ((e.key === 'Enter' && e.ctrlKey) || (e.key === 'Enter' && e.metaKey) || e.key === 'Escape') {
@@ -301,108 +456,46 @@ export const Arena: React.FC<ArenaProps> = ({
 
     if (isCompleted || isPaused) return;
 
-    // Start timer on first keystroke
-    if (!isActive) {
-      setIsActive(true);
-      startTimeRef.current = Date.now();
+    // Virtual keyboard composition / Android unidentified keys:
+    // Do NOT prevent default; let handleInputChange process the typed character!
+    if (e.key === 'Unidentified' || e.nativeEvent.isComposing) {
+      isKeyDownHandledRef.current = false;
+      return;
     }
-
-    const currentIndex = typedText.length;
-    const expectedChar = targetCode[currentIndex];
 
     // Handle Tab
     if (e.key === 'Tab') {
       e.preventDefault();
-      setTotalKeystrokes((k) => k + 1);
-
-      // Check how many spaces are expected at this spot if indented
-      const restExpected = targetCode.slice(currentIndex);
-      let spacesToInsert = '  ';
-      if (restExpected.startsWith('    ')) {
-        spacesToInsert = '    ';
-      } else if (restExpected.startsWith('  ')) {
-        spacesToInsert = '  ';
-      } else if (expectedChar === '\t') {
-        spacesToInsert = '\t';
-      }
-
-      // Check matching
-      const matches = targetCode.slice(currentIndex, currentIndex + spacesToInsert.length) === spacesToInsert;
-      if (matches) {
-        setCorrectKeystrokes((k) => k + spacesToInsert.length);
-        soundFx.playKeyClick();
-      } else {
-        setErrorKeystrokes((k) => k + spacesToInsert.length);
-        soundFx.playError();
-      }
-
-      setTypedText((prev) => prev + spacesToInsert);
+      isKeyDownHandledRef.current = true;
+      handleTabInsert();
       return;
     }
 
     // Handle Backspace
     if (e.key === 'Backspace') {
       e.preventDefault();
-      if (typedText.length > 0) {
-        setTypedText((prev) => prev.slice(0, -1));
-        soundFx.playKeyClick();
-      }
+      isKeyDownHandledRef.current = true;
+      handleBackspaceInsert();
       return;
     }
 
     // Handle Enter
     if (e.key === 'Enter') {
       e.preventDefault();
-      setTotalKeystrokes((k) => k + 1);
-      const isCorrect = expectedChar === '\n';
-      if (isCorrect) {
-        setCorrectKeystrokes((k) => k + 1);
-        soundFx.playKeyClick();
-      } else {
-        setErrorKeystrokes((k) => k + 1);
-        soundFx.playError();
-      }
-
-      if (typingMode === 'strict' && !isCorrect) {
-        // In strict mode, prevent advancing if wrong
-        return;
-      }
-
-      // Auto-indent helper: if next line in target starts with spaces, auto-advance matching leading spaces
-      let nextInput = typedText + '\n';
-      const targetAfterNewline = targetCode.slice(nextInput.length);
-      const leadingSpacesMatch = targetAfterNewline.match(/^[ ]+/);
-      if (leadingSpacesMatch && leadingSpacesMatch[0]) {
-        nextInput += leadingSpacesMatch[0];
-        setCorrectKeystrokes((k) => k + leadingSpacesMatch[0].length);
-      }
-
-      setTypedText(nextInput);
+      isKeyDownHandledRef.current = true;
+      insertChars('\n');
       return;
     }
 
-    // Regular single character keystroke
+    // Regular single character keystroke on physical keyboards
     if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
       e.preventDefault();
-      setTotalKeystrokes((k) => k + 1);
-
-      const isCorrect = e.key === expectedChar;
-
-      if (isCorrect) {
-        setCorrectKeystrokes((k) => k + 1);
-        soundFx.playKeyClick();
-      } else {
-        setErrorKeystrokes((k) => k + 1);
-        soundFx.playError();
-      }
-
-      // In strict mode, if incorrect, cannot advance past error until corrected
-      if (typingMode === 'strict' && !isCorrect) {
-        return;
-      }
-
-      setTypedText((prev) => prev + e.key);
+      isKeyDownHandledRef.current = true;
+      insertChars(e.key);
+      return;
     }
+
+    isKeyDownHandledRef.current = false;
   };
 
   // Toggle Pause
@@ -438,6 +531,29 @@ export const Arena: React.FC<ArenaProps> = ({
     }
   }, [typedText.length]);
 
+  // Touch Handling: distinguish a scroll gesture from a deliberate tap to focus
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchStartPos.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartPos.current) return;
+    const touch = e.changedTouches[0];
+    const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+    touchStartPos.current = null;
+
+    // Small movement (<10px) is an intentional tap, not a scroll drag
+    if (dx < 10 && dy < 10) {
+      inputRef.current?.focus();
+    }
+  };
+
   // Real-time metrics calculations
   const minutes = Math.max(elapsedSeconds, 1) / 60;
   const typedLength = typedText.length;
@@ -470,10 +586,34 @@ export const Arena: React.FC<ArenaProps> = ({
 
   const currentLangMeta = LANGUAGE_META[selectedLanguage];
 
+  // Mobile Coding Quick-Access Characters
+  const mobileAccessoryKeys = [
+    { label: 'Tab', action: () => handleTabInsert() },
+    { label: '{', action: () => insertChars('{') },
+    { label: '}', action: () => insertChars('}') },
+    { label: '(', action: () => insertChars('(') },
+    { label: ')', action: () => insertChars(')') },
+    { label: '[', action: () => insertChars('[') },
+    { label: ']', action: () => insertChars(']') },
+    { label: ';', action: () => insertChars(';') },
+    { label: ':', action: () => insertChars(':') },
+    { label: '=', action: () => insertChars('=') },
+    { label: '<', action: () => insertChars('<') },
+    { label: '>', action: () => insertChars('>') },
+    { label: '"', action: () => insertChars('"') },
+    { label: "'", action: () => insertChars("'") },
+    { label: '->', action: () => insertChars('->') },
+    { label: '::', action: () => insertChars('::') },
+    { label: '&', action: () => insertChars('&') },
+    { label: '*', action: () => insertChars('*') },
+    { label: '⌫', icon: Delete, action: () => handleBackspaceInsert() },
+    { label: '↵', icon: CornerDownLeft, action: () => insertChars('\n') },
+  ];
+
   return (
-    <div className="flex flex-col gap-5 max-w-6xl mx-auto w-full pb-10">
+    <div className="flex flex-col gap-4 sm:gap-5 max-w-6xl mx-auto w-full pb-10">
       {/* Header Controls Bar */}
-      <div className="p-4 rounded-xl bg-[#12151b] border border-[#1f242d] flex flex-wrap items-center justify-between gap-4">
+      <div className="p-3 sm:p-4 rounded-xl bg-[#12151b] border border-[#1f242d] flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         {/* Language Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#0b0d11] rounded-lg border border-[#1f242d]">
           {(['cpp', 'java'] as Language[]).map((lang) => {
@@ -496,14 +636,14 @@ export const Arena: React.FC<ArenaProps> = ({
         </div>
 
         {/* Difficulty Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-[#0b0d11] rounded-lg border border-[#1f242d]">
+        <div className="flex items-center gap-1 p-1 bg-[#0b0d11] rounded-lg border border-[#1f242d] overflow-x-auto max-w-full">
           {(['beginner', 'easy', 'medium', 'hard'] as Difficulty[]).map((diff) => {
             const isSel = selectedDifficulty === diff;
             return (
               <button
                 key={diff}
                 onClick={() => handleDifficultyChange(diff)}
-                className={`px-3 py-1.5 text-xs capitalize font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`px-2.5 sm:px-3 py-1.5 text-xs capitalize font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   isSel
                     ? 'bg-[#191e26] text-[#f0f3f6] border border-[#2d3545]'
                     : 'text-[#8c94a0] hover:text-[#f0f3f6]'
@@ -516,7 +656,7 @@ export const Arena: React.FC<ArenaProps> = ({
         </div>
 
         {/* Mode Selector */}
-        <div className="flex items-center gap-1 p-1 bg-[#0b0d11] rounded-lg border border-[#1f242d]">
+        <div className="flex items-center gap-1 p-1 bg-[#0b0d11] rounded-lg border border-[#1f242d] overflow-x-auto max-w-full">
           <button
             onClick={() => {
               setPracticeMode('snippet');
@@ -633,79 +773,79 @@ export const Arena: React.FC<ArenaProps> = ({
       </div>
 
       {/* Live Telemetry KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
         {/* Net WPM */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <Zap className="w-3.5 h-3.5 text-[#b0ff38]" />
             <span>Net WPM</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {liveNetWpm}
           </div>
         </div>
 
         {/* Gross WPM */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <Gauge className="w-3.5 h-3.5 text-sky-400" />
             <span>Gross WPM</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {liveGrossWpm}
           </div>
         </div>
 
         {/* Accuracy */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             <span>Accuracy</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {liveAccuracy}
             <span className="text-sm font-normal text-[#8c94a0] ml-0.5">%</span>
           </div>
         </div>
 
         {/* Time */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <Timer className="w-3.5 h-3.5 text-amber-400" />
             <span>{timeLimitSeconds > 0 ? 'Remaining' : 'Elapsed'}</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {displayTime}s
           </div>
         </div>
 
         {/* Characters Correct / Total */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
             <span>Chars</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {typedLength}
-            <span className="text-sm font-normal text-[#647082]">/{targetCode.length}</span>
+            <span className="text-xs sm:text-sm font-normal text-[#647082]">/{targetCode.length}</span>
           </div>
         </div>
 
         {/* Errors */}
-        <div className="p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-[#12151b] border border-[#1f242d]">
           <div className="flex items-center gap-1.5 text-[#8c94a0] text-xs mb-1">
             <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
             <span>Errors</span>
           </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
+          <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-[#f0f3f6]">
             {currentUncorrectedErrors}
           </div>
         </div>
       </div>
 
       {/* Snippet Header Information */}
-      <div className="flex items-center justify-between text-xs text-[#8c94a0] px-1">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#8c94a0] px-1">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-[#f0f3f6] text-sm">{currentSnippet.title}</span>
           <span>·</span>
           <span>{currentLangMeta.name}</span>
@@ -719,10 +859,34 @@ export const Arena: React.FC<ArenaProps> = ({
         </div>
       </div>
 
+      {/* Mobile Keyboard Status Callout */}
+      <div className="flex sm:hidden items-center justify-between px-3 py-2 rounded-lg bg-[#141820] border border-[#222938] text-xs">
+        <div className="flex items-center gap-2">
+          <Smartphone className={`w-3.5 h-3.5 ${isInputFocused ? 'text-[#b0ff38]' : 'text-amber-400'}`} />
+          <span className={isInputFocused ? 'text-[#f0f3f6]' : 'text-amber-300 font-medium'}>
+            {isInputFocused ? 'Keyboard active' : 'Tap editor to type'}
+          </span>
+        </div>
+        {!isInputFocused && (
+          <button
+            onClick={() => inputRef.current?.focus()}
+            className="px-2.5 py-1 text-[11px] font-semibold bg-[#b0ff38] text-[#0b0d11] rounded cursor-pointer"
+          >
+            Open Keyboard
+          </button>
+        )}
+      </div>
+
       {/* Code Challenge Panel & Synchronized Editor */}
       <div
-        className="relative rounded-xl border border-[#1f242d] bg-[#0c0f14] shadow-lg overflow-hidden group focus-within:border-[#b0ff38]/50 focus-within:ring-1 focus-within:ring-[#b0ff38]/20 transition-all cursor-text"
+        className={`relative rounded-xl border bg-[#0c0f14] shadow-lg overflow-hidden group transition-all cursor-text ${
+          isInputFocused
+            ? 'border-[#b0ff38]/60 ring-2 ring-[#b0ff38]/15 shadow-[#b0ff38]/5'
+            : 'border-[#1f242d] hover:border-[#2d3545]'
+        }`}
         onClick={() => inputRef.current?.focus()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Top Window Bar */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-[#13171e] border-b border-[#1f242d] text-xs select-none">
@@ -750,17 +914,27 @@ export const Arena: React.FC<ArenaProps> = ({
           />
         </div>
 
-        {/* Hidden Accessible Textarea that captures all real keyboard input */}
+        {/* In-Viewport Accessible Textarea:
+            1. Positioned in the visible viewport (top-12 left-4) so iOS/Android won't scroll off-screen or dismiss keyboard
+            2. Fully controlled value={typedText} with onChange={handleInputChange} for virtual keyboard IME support
+            3. 16px font-size to prevent iOS Safari auto-zoom
+            4. pointer-events-auto and opacity-0 so it captures direct taps without obscuring syntax highlighting
+        */}
         <textarea
           ref={inputRef}
-          value=""
-          onChange={() => {}}
+          value={typedText}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          className="absolute -top-9999px -left-9999px opacity-0 pointer-events-none"
-          autoFocus
+          onFocus={() => setIsInputFocused(true)}
+          onBlur={() => setIsInputFocused(false)}
+          className="absolute top-12 left-4 w-6 h-6 opacity-0 pointer-events-auto resize-none z-10"
+          style={{ fontSize: '16px' }}
           spellCheck={false}
-          autoCapitalize="off"
+          autoCapitalize="none"
           autoCorrect="off"
+          autoComplete="off"
+          inputMode="text"
+          tabIndex={0}
           aria-label="Code typing input area"
         />
 
@@ -781,7 +955,7 @@ export const Arena: React.FC<ArenaProps> = ({
         {/* Code Renderer Container with Line Numbers */}
         <div
           ref={editorContainerRef}
-          className="p-5 font-mono text-sm leading-relaxed overflow-x-auto max-h-[460px] overflow-y-auto select-none"
+          className="p-3 sm:p-5 font-mono text-xs sm:text-sm leading-relaxed overflow-x-auto max-h-[460px] overflow-y-auto select-none touch-pan-y touch-pan-x"
         >
           {(() => {
             // Group tokens into lines
@@ -810,11 +984,11 @@ export const Arena: React.FC<ArenaProps> = ({
                     <div
                       key={lineNum}
                       className={`table-row transition-colors ${
-                        hasActiveCharInLine ? 'bg-[#191e26]/30' : ''
+                        hasActiveCharInLine ? 'bg-[#191e26]/40' : ''
                       }`}
                     >
                       {/* Line Number Gutter */}
-                      <div className="table-cell select-none pr-5 text-right text-xs text-[#454e5d] w-8 tabular-nums align-top">
+                      <div className="table-cell select-none pr-3 sm:pr-5 text-right text-xs text-[#454e5d] w-6 sm:w-8 tabular-nums align-top">
                         {lineNum}
                       </div>
 
@@ -867,7 +1041,7 @@ export const Arena: React.FC<ArenaProps> = ({
                                 <span
                                   key={t.index}
                                   ref={activeCharRef}
-                                  className="relative text-[#e2e8f0] font-semibold bg-[#b0ff38]/15 rounded-xs"
+                                  className="relative text-[#e2e8f0] font-semibold bg-[#b0ff38]/20 rounded-xs"
                                 >
                                   {/* Blinking Caret Indicator */}
                                   <span className="absolute -left-0.5 top-0 bottom-0 w-[2.5px] bg-[#b0ff38] animate-pulse" />
@@ -905,13 +1079,51 @@ export const Arena: React.FC<ArenaProps> = ({
           })()}
         </div>
 
+        {/* Mobile Coding Accessory Bar:
+            Allows 1-tap insertion of brackets, semicolons, arrows, and indentation on mobile virtual keyboards.
+            Uses onMouseDown / onTouchStart with preventDefault() so tapping buttons DOES NOT steal focus
+            or dismiss the mobile software keyboard!
+        */}
+        <div className="block sm:hidden border-t border-[#1f242d] bg-[#10141b] p-2">
+          <div className="flex items-center justify-between text-[10px] text-[#647082] uppercase tracking-wider font-semibold mb-1 px-1">
+            <span>Coding Keypad</span>
+            <span>Tap symbol to insert</span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {mobileAccessoryKeys.map((keyItem, idx) => {
+              const Icon = keyItem.icon;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    keyItem.action();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    keyItem.action();
+                  }}
+                  className="shrink-0 h-9 min-w-9 px-2.5 rounded-md bg-[#191e26] active:bg-[#b0ff38] active:text-[#0b0d11] text-[#f0f3f6] border border-[#2d3545] text-xs font-mono font-semibold flex items-center justify-center transition-colors cursor-pointer select-none"
+                  aria-label={`Insert ${keyItem.label}`}
+                >
+                  {Icon ? <Icon className="w-3.5 h-3.5" /> : keyItem.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Bottom Focus Hint */}
         <div className="flex items-center justify-between px-4 py-2 border-t border-[#1f242d] bg-[#0f1217] text-[11px] text-[#647082]">
           <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#b0ff38]/80" />
-            <span>Editor active. Click anywhere to re-focus.</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isInputFocused ? 'bg-[#b0ff38]' : 'bg-[#647082]'}`} />
+            <span>
+              {isInputFocused ? 'Editor focused & ready to type' : 'Tap anywhere to focus & start typing'}
+            </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-3">
             <span>Spaces: 2/4 preserve indent</span>
             <span>Backspace supported</span>
           </div>

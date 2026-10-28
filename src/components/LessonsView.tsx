@@ -288,7 +288,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by title, concepts, or tags..."
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#f0f3f6] placeholder-[#647082] focus:outline-none focus:border-[#b0ff38]/50"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg pl-9 pr-3 py-1.5 text-base sm:text-xs text-[#f0f3f6] placeholder-[#647082] focus:outline-none focus:border-[#b0ff38]/50"
             />
           </div>
         </div>
@@ -306,7 +306,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
                 setSelectedTopic(e.target.value);
                 setSelectedSubtopic('all');
               }}
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
             >
               <option value="all">All Topics</option>
               {availableTopics.map((t) => (
@@ -325,7 +325,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
             <select
               value={selectedSubtopic}
               onChange={(e) => setSelectedSubtopic(e.target.value)}
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
             >
               <option value="all">All Subtopics</option>
               {availableSubtopics.map((sub) => (
@@ -344,7 +344,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
             <select
               value={selectedDiff}
               onChange={(e) => setSelectedDiff(e.target.value as Difficulty | 'all')}
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer capitalize"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer capitalize"
             >
               <option value="all">All Difficulties</option>
               <option value="beginner">Beginner</option>
@@ -362,7 +362,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
             <select
               value={selectedLength}
               onChange={(e) => setSelectedLength(e.target.value as CodeLength | 'all')}
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer capitalize"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer capitalize"
             >
               <option value="all">All Lengths</option>
               <option value="short">Short (&lt; 15 lines)</option>
@@ -379,7 +379,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as 'all' | 'completed' | 'unpracticed')}
-              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
+              className="w-full bg-[#0b0d11] border border-[#1f242d] rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-[#f0f3f6] focus:outline-none focus:border-[#b0ff38]/50 cursor-pointer"
             >
               <option value="all">All Exercises</option>
               <option value="completed">Practiced Only</option>
