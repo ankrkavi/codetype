@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { SessionResult } from '../types';
 import { LANGUAGE_META } from '../data/snippets';
+import { sanitizeAccuracy } from '../utils/metrics';
 
 interface ResultsModalProps {
   result: SessionResult;
@@ -108,7 +109,7 @@ export const ResultsModal: React.FC<ResultsModalProps> = ({
               <span>Accuracy</span>
             </div>
             <div className="text-lg font-bold font-mono tabular-nums text-[#f0f3f6]">
-              {result.accuracy}%
+              {sanitizeAccuracy(result.accuracy)}%
             </div>
           </div>
 

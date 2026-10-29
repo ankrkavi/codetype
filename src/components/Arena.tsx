@@ -22,6 +22,12 @@ import { Difficulty, Language, PracticeMode, Snippet, TypingMode } from '../type
 import { SNIPPETS, LANGUAGE_META } from '../data/snippets';
 import { tokenizeCode, CodeCharToken } from '../utils/syntaxHighlight';
 import { soundFx } from '../utils/audio';
+import {
+  calculateAccuracy,
+  calculateGrossWpm,
+  calculateNetWpm,
+  calculateUncorrectedErrors,
+} from '../utils/metrics';
 
 interface ArenaProps {
   initialLanguage?: Language;
@@ -204,30 +210,12 @@ export const Arena: React.FC<ArenaProps> = ({
     soundFx.playSuccess();
 
     const duration = Math.max(1, elapsedSeconds);
-    const minutes = duration / 60;
     const typedLength = typedText.length;
-
-    // Calculate uncorrected errors
-    let uncorrectedErrors = 0;
-    for (let i = 0; i < typedLength; i++) {
-      if (typedText[i] !== targetCode[i]) {
-        uncorrectedErrors++;
-      }
-    }
-
-    // Gross WPM = (total characters typed / 5) / elapsed minutes
-    const grossWpm = Math.round(typedLength / 5 / minutes);
-
-    // Net WPM = gross WPM - (uncorrected errors / elapsed minutes)
-    const netWpm = Math.max(0, Math.round(grossWpm - uncorrectedErrors / minutes));
-
-    // Accuracy = (correct keystrokes / total keystrokes) * 100
-    const accuracy =
-      totalKeystrokes > 0
-        ? Math.round((correctKeystrokes / totalKeystrokes) * 1000) / 10
-        : 100;
-
-    const correctChars = typedLength - uncorrectedErrors;
+    const uncorrectedErrors = calculateUncorrectedErrors(targetCode, typedText);
+    const grossWpm = calculateGrossWpm(typedLength, duration);
+    const netWpm = calculateNetWpm(grossWpm, uncorrectedErrors, duration);
+    const accuracy = calculateAccuracy(correctKeystrokes, totalKeystrokes);
+    const correctChars = Math.max(0, typedLength - uncorrectedErrors);
 
     onSessionComplete({
       snippetId: currentSnippet.id,
@@ -303,7 +291,7 @@ export const Arena: React.FC<ArenaProps> = ({
 
   // Core character insertion routine (used by physical keydown, mobile onChange, and accessory buttons)
   const insertChars = useCallback(
-    (chars: string) => {
+    (chars: string, baseText?: string) => {
       if (isCompleted || isPaused) return;
 
       if (!isActive) {
@@ -312,7 +300,7 @@ export const Arena: React.FC<ArenaProps> = ({
       }
 
       setTypedText((prevTyped) => {
-        let updated = prevTyped;
+        let updated = baseText !== undefined ? baseText : prevTyped;
         let localCorrect = 0;
         let localError = 0;
         let localTotal = 0;
@@ -332,12 +320,15 @@ export const Arena: React.FC<ArenaProps> = ({
             updated += ch;
 
             // Auto-indent helper when newline is typed: advance matching leading spaces
+            // Both localCorrect and localTotal MUST be incremented so correct never exceeds total
             if (ch === '\n') {
               const restTarget = targetCode.slice(updated.length);
               const leadingSpacesMatch = restTarget.match(/^[ ]+/);
               if (leadingSpacesMatch && leadingSpacesMatch[0]) {
+                const indentLen = leadingSpacesMatch[0].length;
                 updated += leadingSpacesMatch[0];
-                localCorrect += leadingSpacesMatch[0].length;
+                localCorrect += indentLen;
+                localTotal += indentLen;
               }
             }
           } else {
@@ -433,8 +424,11 @@ export const Arena: React.FC<ArenaProps> = ({
     }
 
     const insertedStr = newVal.slice(commonPrefixLen);
+    const baseText = oldVal.slice(0, commonPrefixLen);
     if (insertedStr.length > 0) {
-      insertChars(insertedStr);
+      insertChars(insertedStr, baseText);
+    } else if (commonPrefixLen < oldVal.length) {
+      setTypedText(baseText);
     }
   };
 
@@ -555,25 +549,15 @@ export const Arena: React.FC<ArenaProps> = ({
   };
 
   // Real-time metrics calculations
-  const minutes = Math.max(elapsedSeconds, 1) / 60;
   const typedLength = typedText.length;
-  let currentUncorrectedErrors = 0;
-  for (let i = 0; i < typedLength; i++) {
-    if (typedText[i] !== targetCode[i]) {
-      currentUncorrectedErrors++;
-    }
-  }
-
+  const currentUncorrectedErrors = calculateUncorrectedErrors(targetCode, typedText);
   const liveGrossWpm =
-    isActive && elapsedSeconds > 0 ? Math.round(typedLength / 5 / minutes) : 0;
+    isActive && elapsedSeconds > 0 ? calculateGrossWpm(typedLength, elapsedSeconds) : 0;
   const liveNetWpm =
     isActive && elapsedSeconds > 0
-      ? Math.max(0, Math.round(liveGrossWpm - currentUncorrectedErrors / minutes))
+      ? calculateNetWpm(liveGrossWpm, currentUncorrectedErrors, elapsedSeconds)
       : 0;
-  const liveAccuracy =
-    totalKeystrokes > 0
-      ? Math.round((correctKeystrokes / totalKeystrokes) * 1000) / 10
-      : 100;
+  const liveAccuracy = calculateAccuracy(correctKeystrokes, totalKeystrokes);
   const progressPercent = Math.min(
     100,
     Math.round((typedLength / Math.max(1, targetCode.length)) * 100)

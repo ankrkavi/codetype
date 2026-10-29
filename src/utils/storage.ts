@@ -1,5 +1,6 @@
 import { ExerciseProgress, Language, SessionResult, UserPreferences, UserStats } from '../types';
 import { ALL_EXERCISES } from '../data/snippets';
+import { sanitizeAccuracy } from './metrics';
 
 const STORAGE_KEYS = {
   SESSIONS: 'codetype_sessions_v1',
@@ -41,7 +42,12 @@ export function getSessionResults(): SessionResult[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.sort((a, b) => b.timestamp - a.timestamp);
+      return parsed
+        .map((s) => ({
+          ...s,
+          accuracy: sanitizeAccuracy(s.accuracy),
+        }))
+        .sort((a, b) => b.timestamp - a.timestamp);
     }
     return [];
   } catch {
@@ -55,7 +61,17 @@ export function getExerciseProgressMap(): Record<string, ExerciseProgress> {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed === 'object' && parsed !== null) {
-      return parsed;
+      // Sanitize any corrupt accuracy in progress map
+      const sanitizedMap: Record<string, ExerciseProgress> = {};
+      Object.entries(parsed).forEach(([k, v]) => {
+        if (v && typeof v === 'object') {
+          sanitizedMap[k] = {
+            ...(v as ExerciseProgress),
+            latestAccuracy: sanitizeAccuracy((v as ExerciseProgress).latestAccuracy),
+          };
+        }
+      });
+      return sanitizedMap;
     }
     return {};
   } catch {
@@ -82,7 +98,7 @@ export function saveExerciseProgress(
     exerciseId,
     completed: true,
     bestNetWpm: Math.max(existing.bestNetWpm, netWpm),
-    latestAccuracy: accuracy,
+    latestAccuracy: sanitizeAccuracy(accuracy),
     attempts: existing.attempts + 1,
     lastPracticedTimestamp: Date.now(),
   };
@@ -116,6 +132,7 @@ export function saveSessionResult(result: SessionResult): {
 
   const savedResult: SessionResult = {
     ...result,
+    accuracy: sanitizeAccuracy(result.accuracy),
     isPersonalBest
   };
 
@@ -128,7 +145,7 @@ export function saveSessionResult(result: SessionResult): {
 
   // Update exercise specific progress
   if (result.snippetId) {
-    saveExerciseProgress(result.snippetId, result.netWpm, result.accuracy);
+    saveExerciseProgress(result.snippetId, result.netWpm, savedResult.accuracy);
   }
 
   return { isPersonalBest, savedResult };
@@ -172,7 +189,9 @@ export function getUserStats(): UserStats {
   const totalTimePracticedSeconds = sessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
   const bestNetWpm = Math.max(...sessions.map(s => s.netWpm), 0);
   const avgNetWpm = Math.round(sessions.reduce((acc, s) => acc + s.netWpm, 0) / totalSessions);
-  const avgAccuracy = Math.round((sessions.reduce((acc, s) => acc + s.accuracy, 0) / totalSessions) * 10) / 10;
+  const avgAccuracy = sanitizeAccuracy(
+    Math.round((sessions.reduce((acc, s) => acc + sanitizeAccuracy(s.accuracy), 0) / totalSessions) * 10) / 10
+  );
 
   const sessionsByLanguage: Record<Language, number> = {
     cpp: 0,
